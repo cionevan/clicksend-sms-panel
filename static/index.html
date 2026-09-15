@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="tr" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClickSend SMS & Website Registration Paneli</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="h-full text-slate-800 flex flex-col">
+
+  <!-- Üst Bar -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-md shadow-blue-500/20">
+          <i class="fa-solid fa-comment-sms"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold leading-tight text-slate-900">ClickSend SMS Paneli</h1>
+          <p class="text-xs text-slate-500">Website Registration & API Entegrasyonu</p>
+        </div>
+      </div>
+
+      <!-- Bakiye Rozeti & Yenile -->
+      <div class="flex items-center space-x-3">
+        <div id="balanceBadge" class="hidden items-center space-x-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg text-sm">
+          <span class="text-slate-500 text-xs">Bakiye:</span>
+          <span id="balanceAmount" class="font-semibold text-emerald-600">--</span>
+          <span id="balanceCurrency" class="text-xs text-slate-500 font-mono"></span>
+        </div>
+        <button onclick="fetchBalance(true)" id="refreshBalanceBtn" title="Bakiyeyi Yenile" class="p-2 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Ana İçerik -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Sekmeler -->
+    <div class="flex space-x-2 border-b border-slate-200 mb-8 overflow-x-auto pb-1">
+      <button onclick="switchTab('send')" id="tab-btn-send" class="tab-btn active px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-paper-plane"></i>
+        <span>Hızlı SMS</span>
+      </button>
+      <button onclick="switchTab('verify')" id="tab-btn-verify" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span>Website Doğrulama (OTP)</span>
+      </button>
+      <button onclick="switchTab('history')" id="tab-btn-history" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        <span>Gönderim Geçmişi</span>
+      </button>
+      <button onclick="switchTab('settings')" id="tab-btn-settings" class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center space-x-2 whitespace-nowrap">
+        <i class="fa-solid fa-gear"></i>
+        <span>API Ayarları</span>
+        <span id="settingsWarnDot" class="w-2 h-2 rounded-full bg-amber-500 hidden"></span>
+      </button>
+    </div>
+
+    <!-- Bildirim / Alert Alanı -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 max-w-md w-full pointer-events-none"></div>
+
+    <!-- SEKME 1: HIZLI SMS GÖNDER -->
+    <div id="tab-send" class="tab-pane">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 max-w-2xl">
+        <div class="mb-6">
+          <h2 class="text-xl font-bold text-slate-900">Tekil SMS Gönderimi</h2>
+          <p class="text-sm text-slate-500">Herhangi bir telefon numarasına anında test veya bildirim SMS'i iletin.</p>
+        </div>
+
+        <form id="smsForm" onsubmit="handleSendSms(event)" class="space-y-5">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Alıcı Telefon Numarası</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <i class="fa-solid fa-phone"></i>
+              </span>
+              <input type="text" id="smsTo" required placeholder="+905xxxxxxxxx" class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Numarayı ülke koduyla (+90) birlikte girin.</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Gönderici Başlığı (Opsiyonel)</label>
+            <input type="text" id="smsSender" placeholder="Varsayılan başlık için boş bırakın" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-sm font-medium text-slate-700">SMS Metni</label>
+              <span id="charCounter" class="text-xs text-slate-400 font-mono">0 karakter (1 SMS)</span>
+            </div>
+            <textarea id="smsBody" required rows="4" placeholder="Mesajınızı buraya yazın..." oninput="updateCharCount()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm"></textarea>
+          </div>
+
+          <button type="submit" id="sendSmsSubmitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Mesajı Gönder</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- SEKME 2: WEBSITE REGISTRATION / DOĞRULAMA (OTP) -->
+    <div id="tab-verify" class="tab-pane hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+          <div class="mb-6">
+            <h2 class="text-xl font-bold text-slate-900">Website Kayıt & OTP Doğrulama</h2>
+            <p class="text-sm text-slate-500">Web sitenize üye olan kullanıcılara tek kullanımlık kod veya onay linki gönderin.</p>
+          </div>
+
+          <form id="verifyForm" onsubmit="handleSendVerification(event)" class="space-y-5">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Alıcı Telefon Numarası</label>
+              <input type="text" id="verifyTo" required placeholder="+905xxxxxxxxx" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">ClickSend'de Kayıtlı Alan Adı (Domain)</label>
+              <input type="text" id="verifyDomain" required placeholder="siteniz.com" oninput="updateVerifyPreview()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Doğrulama Kodu (OTP)</label>
+                <div class="flex space-x-2">
+                  <input type="text" id="verifyCode" placeholder="örn: 482910" oninput="updateVerifyPreview()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                  <button type="button" onclick="generateRandomCode()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold whitespace-nowrap transition">
+                    Rastgele Üret
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Veya Doğrulama Token'ı (Link için)</label>
+                <input type="text" id="verifyToken" placeholder="örn: tk_98a72c1..." oninput="updateVerifyPreview()" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+              </div>
+            </div>
+
+            <!-- Canlı Önizleme -->
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+              <span class="text-xs font-semibold text-slate-500 block mb-1 uppercase tracking-wider">SMS Önizlemesi</span>
+              <p id="verifyPreviewText" class="text-sm font-mono text-slate-700 bg-white p-3 rounded-lg border border-slate-200">
+                Kayıt doğrulama kodunuz: 482910. https://siteniz.com
+              </p>
+            </div>
+
+            <button type="submit" id="sendVerifySubmitBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-shield-check"></i>
+              <span>Doğrulama SMS'i Gönder</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Bilgi Kartı -->
+        <div class="bg-blue-50/70 border border-blue-100 rounded-2xl p-6 h-fit">
+          <div class="flex items-center space-x-2 text-blue-800 font-semibold mb-3">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>Website Registration Hakkında</span>
+          </div>
+          <p class="text-xs text-blue-900/80 leading-relaxed mb-4">
+            ClickSend, SMS içerisindeki URL'lerin kimlik avı (phishing) amacıyla kötüye kullanılmasını engellemek için domain doğrulaması zorunlu kılar.
+          </p>
+          <div class="bg-white rounded-xl p-3.5 border border-blue-200/60 mb-4 text-xs text-slate-600 space-y-2">
+            <p><strong>1. Adım:</strong> ClickSend paneline gidin.</p>
+            <p><strong>2. Adım:</strong> Sitenizin ana alan adını kaydedin.</p>
+            <p><strong>3. Adım:</strong> Onaylandıktan sonra bu panelden sorunsuz SMS gönderin.</p>
+          </div>
+          <a href="https://dashboard.clicksend.com/sms/website-registration" target="_blank" rel="noopener noreferrer" class="inline-flex items-center text-xs font-semibold text-blue-600 hover:text-blue-800 space-x-1">
+            <span>ClickSend Dashboard Kayıt Sayfası</span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEKME 3: GÖNDERİM GEÇMİŞİ -->
+    <div id="tab-history" class="tab-pane hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Gönderim Kayıtları</h2>
+            <p class="text-xs text-slate-500">Bu oturumda ve sistemde kaydedilen son SMS logları</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="fetchHistory()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-medium transition">
+              <i class="fa-solid fa-arrows-rotate mr-1"></i> Yenile
+            </button>
+            <button onclick="clearHistory()" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-medium transition">
+              <i class="fa-solid fa-trash mr-1"></i> Temizle
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-100">
+              <tr>
+                <th class="py-3 px-4">Tarih</th>
+                <th class="py-3 px-4">Alıcı</th>
+                <th class="py-3 px-4">Mesaj</th>
+                <th class="py-3 px-4">Durum</th>
+                <th class="py-3 px-4">HTTP</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody" class="divide-y divide-slate-100">
+              <tr>
+                <td colspan="5" class="py-8 text-center text-slate-400 text-xs">Henüz gönderim kaydı bulunmuyor.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEKME 4: API AYARLARI -->
+    <div id="tab-settings" class="tab-pane hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 max-w-2xl">
+        <div class="mb-6">
+          <h2 class="text-xl font-bold text-slate-900">ClickSend API Yapılandırması</h2>
+          <p class="text-sm text-slate-500">API kimlik bilgilerinizi buradan girebilirsiniz. Bilgiler Docker içinde güvenle kalıcı olarak saklanır.</p>
+        </div>
+
+        <form id="settingsForm" onsubmit="handleSaveSettings(event)" class="space-y-5">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">ClickSend Kullanıcı Adı (Email veya Username)</label>
+            <input type="text" id="settingUsername" required placeholder="ornek@hesap.com" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">ClickSend API Key</label>
+            <div class="relative">
+              <input type="password" id="settingApiKey" placeholder="Mevcut anahtarı değiştirmek için yeni girin" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm">
+              <button type="button" onclick="togglePasswordVis('settingApiKey')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+                <i class="fa-solid fa-eye text-xs"></i>
+              </button>
+            </div>
+            <p id="apiKeyStatus" class="text-xs text-slate-400 mt-1">API anahtarı durumu kontrol ediliyor...</p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Varsayılan Web Sitesi (Domain)</label>
+              <input type="text" id="settingDefaultDomain" placeholder="siteniz.com" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Varsayılan Gönderici Başlığı (Opsiyonel)</label>
+              <input type="text" id="settingDefaultSender" placeholder="örn: SIRKETINIZ" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+          </div>
+
+          <div class="pt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3">
+            <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-floppy-disk"></i>
+              <span>Ayarları Kaydet</span>
+            </button>
+            <button type="button" onclick="testConnection()" class="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-plug"></i>
+              <span>Bağlantıyı Test Et</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Sekme Yönetimi
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active', 'border-blue-600', 'text-blue-600');
+        btn.classList.add('border-transparent', 'text-slate-500');
+      });
+
+      const activePane = document.getElementById(`tab-${tabId}`);
+      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+      if (activePane && activeBtn) {
+        activePane.classList.remove('hidden');
+        activeBtn.classList.remove('border-transparent', 'text-slate-500');
+        activeBtn.classList.add('active', 'border-blue-600', 'text-blue-600');
+      }
+
+      if (tabId === 'history') fetchHistory();
+    }
+
+    // Şifre Göster/Gizle
+    function togglePasswordVis(inputId) {
+      const input = document.getElementById(inputId);
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    // Karakter Sayacı
+    function updateCharCount() {
+      const text = document.getElementById('smsBody').value || '';
+      const len = text.length;
+      const smsParts = len <= 160 ? 1 : Math.ceil(len / 153);
+      document.getElementById('charCounter').innerText = `${len} karakter (${smsParts} SMS)`;
+    }
+
+    // Rastgele Doğrulama Kodu Üretici
+    function generateRandomCode() {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      document.getElementById('verifyCode').value = code;
+      updateVerifyPreview();
+    }
+
+    // Doğrulama SMS Önizleme
+    function updateVerifyPreview() {
+      const domain = (document.getElementById('verifyDomain').value || 'siteniz.com').replace(/https?:\/\//, '').replace(/\/$/, '');
+      const code = document.getElementById('verifyCode').value;
+      const token = document.getElementById('verifyToken').value;
+
+      let preview = "";
+      if (token) {
+        preview = `Kayıt doğrulama linkiniz: https://${domain}/verify?token=${token}`;
+      } else if (code) {
+        preview = `Kayıt doğrulama kodunuz: ${code}. https://${domain}`;
+      } else {
+        preview = `Kaydınız başarıyla tamamlandı: https://${domain}`;
+      }
+      document.getElementById('verifyPreviewText').innerText = preview;
+    }
+
+    // Toast Bildirimi
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-rose-600 text-white',
+        info: 'bg-slate-800 text-white'
+      };
+
+      toast.className = `p-4 rounded-xl shadow-lg flex items-center justify-between text-sm font-medium transition transform translate-y-2 opacity-0 pointer-events-auto ${colors[type] || colors.info}`;
+      toast.innerHTML = `<span>${message}</span><button onclick="this.parentElement.remove()" class="ml-3 opacity-70 hover:opacity-100"><i class="fa-solid fa-xmark"></i></button>`;
+
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // Ayarları Yükle
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+        
+        document.getElementById('settingUsername').value = data.username || '';
+        document.getElementById('settingDefaultDomain').value = data.default_domain || '';
+        document.getElementById('settingDefaultSender').value = data.default_sender_id || '';
+        document.getElementById('verifyDomain').value = data.default_domain || '';
+        updateVerifyPreview();
+
+        const statusEl = document.getElementById('apiKeyStatus');
+        const warnDot = document.getElementById('settingsWarnDot');
+
+        if (data.has_api_key) {
+          statusEl.innerText = "✓ API Anahtarı kayıtlı ve aktif.";
+          statusEl.className = "text-xs text-emerald-600 mt-1";
+          warnDot.classList.add('hidden');
+          fetchBalance();
+        } else {
+          statusEl.innerText = "⚠ API Anahtarı henüz girilmemiş.";
+          statusEl.className = "text-xs text-amber-600 mt-1";
+          warnDot.classList.remove('hidden');
+        }
+      } catch (err) {
+        showToast("Ayarlar yüklenemedi", "error");
+      }
+    }
+
+    // Ayarları Kaydet
+    async function handleSaveSettings(e) {
+      e.preventDefault();
+      const payload = {
+        username: document.getElementById('settingUsername').value.trim(),
+        default_domain: document.getElementById('settingDefaultDomain').value.trim(),
+        default_sender_id: document.getElementById('settingDefaultSender').value.trim()
+      };
+
+      const keyVal = document.getElementById('settingApiKey').value.trim();
+      if (keyVal) payload.api_key = keyVal;
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || "Ayarlar kaydedildi", "success");
+          loadSettings();
+          document.getElementById('settingApiKey').value = "";
+        }
+      } catch (err) {
+        showToast("Kaydetme sırasında hata oluştu", "error");
+      }
+    }
+
+    // Bakiye & Bağlantı Sorgusu
+    async function fetchBalance(manual = false) {
+      const btn = document.getElementById('refreshBalanceBtn');
+      btn.classList.add('animate-spin');
+
+      try {
+        const res = await fetch('/api/balance');
+        const data = await res.json();
+        btn.classList.remove('animate-spin');
+
+        const badge = document.getElementById('balanceBadge');
+        if (data.success) {
+          document.getElementById('balanceAmount').innerText = data.balance;
+          document.getElementById('balanceCurrency').innerText = data.currency;
+          badge.classList.remove('hidden');
+          badge.classList.add('flex');
+          if (manual) showToast(`Bakiye: ${data.balance} ${data.currency}`, "success");
+        } else {
+          badge.classList.add('hidden');
+          if (manual) showToast(data.error || "ClickSend ile bağlantı kurulamadı", "error");
+        }
+      } catch (err) {
+        btn.classList.remove('animate-spin');
+        if (manual) showToast("Bakiye sorgulanamadı", "error");
+      }
+    }
+
+    async function testConnection() {
+      await fetchBalance(true);
+    }
+
+    // Tekil SMS Gönder
+    async function handleSendSms(e) {
+      e.preventDefault();
+      const btn = document.getElementById('sendSmsSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>Gönderiliyor...</span>`;
+
+      const payload = {
+        to: document.getElementById('smsTo').value.trim(),
+        message: document.getElementById('smsBody').value.trim(),
+        sender_id: document.getElementById('smsSender').value.trim() || null
+      };
+
+      try {
+        const res = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("SMS başarıyla gönderildi!", "success");
+          document.getElementById('smsBody').value = "";
+          updateCharCount();
+          fetchBalance();
+        } else {
+          showToast(data.error?.message || data.detail || "SMS gönderilemedi", "error");
+        }
+      } catch (err) {
+        showToast("İstek hatası: " + err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i><span>Mesajı Gönder</span>`;
+      }
+    }
+
+    // Doğrulama SMS Gönder
+    async function handleSendVerification(e) {
+      e.preventDefault();
+      const btn = document.getElementById('sendVerifySubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i><span>Gönderiliyor...</span>`;
+
+      const payload = {
+        to: document.getElementById('verifyTo').value.trim(),
+        domain: document.getElementById('verifyDomain').value.trim(),
+        code: document.getElementById('verifyCode').value.trim() || null,
+        token: document.getElementById('verifyToken').value.trim() || null
+      };
+
+      try {
+        const res = await fetch('/api/send-verification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Doğrulama SMS'i başarıyla gönderildi!", "success");
+          fetchBalance();
+        } else {
+          showToast(data.error?.message || data.detail || "Doğrulama SMS'i gönderilemedi", "error");
+        }
+      } catch (err) {
+        showToast("İstek hatası: " + err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-shield-check"></i><span>Doğrulama SMS'i Gönder</span>`;
+      }
+    }
+
+    // Gönderim Geçmişini Çek
+    async function fetchHistory() {
+      try {
+        const res = await fetch('/api/history');
+        const list = await res.json();
+        const tbody = document.getElementById('historyTableBody');
+
+        if (!list || list.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-slate-400 text-xs">Henüz gönderim kaydı bulunmuyor.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = list.map(item => `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="py-3 px-4 text-xs font-mono text-slate-500 whitespace-nowrap">${item.timestamp}</td>
+            <td class="py-3 px-4 font-mono font-medium text-slate-800">${item.to}</td>
+            <td class="py-3 px-4 text-xs text-slate-600 max-w-xs truncate" title="${item.message}">${item.message}</td>
+            <td class="py-3 px-4">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+                ${item.status}
+              </span>
+            </td>
+            <td class="py-3 px-4 font-mono text-xs text-slate-500">${item.http_code}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast("Geçmiş loglar yüklenemedi", "error");
+      }
+    }
+
+    async function clearHistory() {
+      if (!confirm("Tüm gönderim geçmişi silinsin mi?")) return;
+      try {
+        await fetch('/api/history', { method: 'DELETE' });
+        showToast("Geçmiş temizlendi", "info");
+        fetchHistory();
+      } catch (err) {
+        showToast("Hata oluştu", "error");
+      }
+    }
+
+    // Başlangıç Yüklemesi
+    loadSettings();
+  </script>
+</body>
+</html>

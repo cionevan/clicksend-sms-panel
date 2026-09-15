@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  clicksend-panel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clicksend-sms-panel
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Ayarların ve geçmişin kalıcı olması için volume
+      - clicksend_data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      # Opsiyonel: Başlangıç kimlik bilgileri (arayüzden de girilebilir)
+      - CLICKSEND_USERNAME=
+      - CLICKSEND_API_KEY=
+      - DEFAULT_DOMAIN=
+      - DEFAULT_SENDER_ID=
+
+volumes:
+  clicksend_data:
+    name: clicksend_data

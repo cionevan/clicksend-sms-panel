@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data & Environment
+.env
+data/
+*.log
+
+# Antigravity / Agent files
+.agents/
+check_quote.png
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
