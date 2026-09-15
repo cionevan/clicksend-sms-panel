@@ -1,13 +1,14 @@
 import os
 import json
 import base64
+import secrets
 import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest, Response, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -19,15 +20,27 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = DATA_DIR / "settings.json"
 HISTORY_FILE = DATA_DIR / "history.json"
+SESSIONS_FILE = DATA_DIR / "sessions.json"
 
 CLICKSEND_API_BASE = "https://rest.clicksend.com/v3"
 SMS_SEND_ENDPOINT = f"{CLICKSEND_API_BASE}/sms/send"
 ACCOUNT_ENDPOINT = f"{CLICKSEND_API_BASE}/account"
 
-app = FastAPI(title="ClickSend SMS Panel", version="1.0.0")
+app = FastAPI(title="Operations Console", version="1.0.0", docs_url=None, redoc_url=None)
 
 
 # --- Modeller ---
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+
+
+class ChangePasswordPayload(BaseModel):
+    old_password: str
+    new_username: Optional[str] = None
+    new_password: str
+
+
 class SettingsPayload(BaseModel):
     username: str
     api_key: Optional[str] = None
@@ -48,9 +61,11 @@ class SendVerificationPayload(BaseModel):
     token: Optional[str] = None
 
 
-# --- Yardımcı Fonksiyonlar ---
+# --- Ayarlar & Oturum Yönetimi ---
 def get_stored_settings() -> dict:
     settings = {
+        "admin_username": os.getenv("ADMIN_USERNAME", "admin"),
+        "admin_password": os.getenv("ADMIN_PASSWORD", "admin123"),
         "username": os.getenv("CLICKSEND_USERNAME", ""),
         "api_key": os.getenv("CLICKSEND_API_KEY", ""),
         "default_domain": os.getenv("DEFAULT_DOMAIN", ""),
@@ -69,6 +84,71 @@ def get_stored_settings() -> dict:
 def save_stored_settings(settings: dict):
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=2)
+
+
+def load_sessions() -> dict:
+    if SESSIONS_FILE.exists():
+        try:
+            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_sessions(sessions: dict):
+    with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+        json.dump(sessions, f)
+
+
+def create_session(username: str) -> str:
+    token = secrets.token_hex(32)
+    sessions = load_sessions()
+    # 30 gün geçerli oturum
+    expires = (datetime.datetime.now() + datetime.timedelta(days=30)).isoformat()
+    sessions[token] = {"username": username, "expires": expires}
+    save_sessions(sessions)
+    return token
+
+
+def verify_session(token: Optional[str]) -> bool:
+    if not token:
+        return False
+    sessions = load_sessions()
+    sess = sessions.get(token)
+    if not sess:
+        return False
+    try:
+        exp = datetime.datetime.fromisoformat(sess.get("expires", ""))
+        if datetime.datetime.now() > exp:
+            del sessions[token]
+            save_sessions(sessions)
+            return False
+    except Exception:
+        return False
+    return True
+
+
+def remove_session(token: Optional[str]):
+    if not token:
+        return
+    sessions = load_sessions()
+    if token in sessions:
+        del sessions[token]
+        save_sessions(sessions)
+
+
+def require_auth(req: FastAPIRequest):
+    # Çerezden veya Header'dan token al
+    token = req.cookies.get("portal_session")
+    if not token:
+        auth_header = req.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Oturum süresi dolmuş veya geçersiz.")
+    return True
 
 
 def get_auth_header(username: str, api_key: str) -> str:
@@ -90,7 +170,7 @@ def load_history() -> list:
 def record_history(item: dict):
     history = load_history()
     history.insert(0, item)
-    history = history[:100]  # En son 100 kaydı sakla
+    history = history[:100]
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
@@ -101,14 +181,14 @@ def execute_clicksend_sms(to_number: str, message_body: str, sender_id: Optional
     api_key = settings.get("api_key")
 
     if not username or not api_key:
-        raise ValueError("ClickSend kullanıcı adı ve API anahtarı ayarlanmamış. Lütfen Ayarlar sekmesinden girin.")
+        raise ValueError("API kimlik bilgileri eksik. Lütfen Ayarlar sekmesinden yapılandırın.")
 
     payload = {
         "messages": [
             {
                 "to": to_number,
                 "body": message_body,
-                "source": "dokploy-web-panel"
+                "source": "dokploy-portal"
             }
         ]
     }
@@ -184,21 +264,78 @@ def execute_clicksend_sms(to_number: str, message_body: str, sender_id: Optional
         }
 
 
-# --- API Endpointleri ---
+# --- Kimlik Doğrulama Endpointleri ---
+@app.post("/api/login")
+def api_login(payload: LoginPayload, response: Response):
+    settings = get_stored_settings()
+    expected_user = settings.get("admin_username", "admin")
+    expected_pass = settings.get("admin_password", "admin123")
+
+    if payload.username == expected_user and payload.password == expected_pass:
+        token = create_session(payload.username)
+        response.set_cookie(
+            key="portal_session",
+            value=token,
+            max_age=30 * 24 * 3600,
+            httponly=False,
+            samesite="lax"
+        )
+        return {"success": True, "token": token, "username": payload.username}
+    raise HTTPException(status_code=401, detail="Kullanıcı adı veya şifre hatalı.")
+
+
+@app.post("/api/logout")
+def api_logout(req: FastAPIRequest, response: Response):
+    token = req.cookies.get("portal_session")
+    if token:
+        remove_session(token)
+    response.delete_cookie(key="portal_session")
+    return {"success": True, "message": "Çıkış yapıldı."}
+
+
+@app.get("/api/auth/status")
+def auth_status(req: FastAPIRequest):
+    token = req.cookies.get("portal_session")
+    if not token:
+        auth_header = req.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+
+    is_valid = verify_session(token)
+    return {"authenticated": is_valid}
+
+
+@app.post("/api/change-admin-auth")
+def change_admin_auth(payload: ChangePasswordPayload, auth: bool = Depends(require_auth)):
+    settings = get_stored_settings()
+    if payload.old_password != settings.get("admin_password"):
+        raise HTTPException(status_code=400, detail="Mevcut şifre hatalı.")
+
+    if payload.new_username:
+        settings["admin_username"] = payload.new_username.strip()
+    if payload.new_password:
+        settings["admin_password"] = payload.new_password.strip()
+
+    save_stored_settings(settings)
+    return {"success": True, "message": "Giriş bilgileri başarıyla güncellendi."}
+
+
+# --- Korumalı Uygulama Endpointleri ---
 @app.get("/api/settings")
-def get_settings():
+def get_settings(auth: bool = Depends(require_auth)):
     settings = get_stored_settings()
     has_api_key = bool(settings.get("api_key"))
     return {
         "username": settings.get("username", ""),
         "has_api_key": has_api_key,
         "default_domain": settings.get("default_domain", ""),
-        "default_sender_id": settings.get("default_sender_id", "")
+        "default_sender_id": settings.get("default_sender_id", ""),
+        "admin_username": settings.get("admin_username", "admin")
     }
 
 
 @app.post("/api/settings")
-def save_settings(payload: SettingsPayload):
+def save_settings(payload: SettingsPayload, auth: bool = Depends(require_auth)):
     current = get_stored_settings()
     current["username"] = payload.username
     if payload.api_key:
@@ -209,11 +346,11 @@ def save_settings(payload: SettingsPayload):
         current["default_sender_id"] = payload.default_sender_id
 
     save_stored_settings(current)
-    return {"success": True, "message": "Ayarlar başarıyla kaydedildi."}
+    return {"success": True, "message": "Ayarlar kaydedildi."}
 
 
 @app.get("/api/balance")
-def get_balance():
+def get_balance(auth: bool = Depends(require_auth)):
     settings = get_stored_settings()
     username = settings.get("username")
     api_key = settings.get("api_key")
@@ -221,7 +358,7 @@ def get_balance():
     if not username or not api_key:
         return {
             "success": False,
-            "error": "ClickSend Kullanıcı Adı ve API Key henüz yapılandırılmamış."
+            "error": "API kimlik bilgileri yapılandırılmamış."
         }
 
     req = Request(
@@ -250,7 +387,7 @@ def get_balance():
 
 
 @app.post("/api/send-sms")
-def api_send_sms(payload: SendSmsPayload):
+def api_send_sms(payload: SendSmsPayload, auth: bool = Depends(require_auth)):
     try:
         res = execute_clicksend_sms(
             to_number=payload.to,
@@ -265,15 +402,15 @@ def api_send_sms(payload: SendSmsPayload):
 
 
 @app.post("/api/send-verification")
-def api_send_verification(payload: SendVerificationPayload):
+def api_send_verification(payload: SendVerificationPayload, auth: bool = Depends(require_auth)):
     domain = payload.domain.replace("https://", "").replace("http://", "").strip("/")
     if payload.token:
         link = f"https://{domain}/verify?token={payload.token}"
-        body = f"Kayıt doğrulama linkiniz: {link}"
+        body = f"Doğrulama linkiniz: {link}"
     elif payload.code:
-        body = f"Kayıt doğrulama kodunuz: {payload.code}. https://{domain}"
+        body = f"Doğrulama kodunuz: {payload.code}. https://{domain}"
     else:
-        body = f"Kaydınız başarıyla tamamlandı: https://{domain}"
+        body = f"İşlem başarıyla tamamlandı: https://{domain}"
 
     settings = get_stored_settings()
     sender_id = settings.get("default_sender_id") or None
@@ -292,15 +429,15 @@ def api_send_verification(payload: SendVerificationPayload):
 
 
 @app.get("/api/history")
-def get_history():
+def get_history(auth: bool = Depends(require_auth)):
     return load_history()
 
 
 @app.delete("/api/history")
-def clear_history():
+def clear_history(auth: bool = Depends(require_auth)):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump([], f)
-    return {"success": True, "message": "Geçmiş temizlendi."}
+    return {"success": True, "message": "Kayıtlar temizlendi."}
 
 
 # Statik Dosyalar ve Anasayfa
@@ -314,4 +451,4 @@ def serve_index():
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(index_path)
-    return JSONResponse({"status": "running", "message": "ClickSend SMS API Panel"})
+    return JSONResponse({"status": "running", "message": "Portal Console"})
