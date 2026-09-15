@@ -18,6 +18,25 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Otomatik .env yükleyici
+def load_env_file(filepath = BASE_DIR / ".env"):
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip("'\"")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+        except Exception:
+            pass
+
+load_env_file()
+
 SETTINGS_FILE = DATA_DIR / "settings.json"
 HISTORY_FILE = DATA_DIR / "history.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"
@@ -64,18 +83,21 @@ class SendVerificationPayload(BaseModel):
 # --- Ayarlar & Oturum Yönetimi ---
 def get_stored_settings() -> dict:
     settings = {
-        "admin_username": os.getenv("ADMIN_USERNAME", "admin"),
-        "admin_password": os.getenv("ADMIN_PASSWORD", "admin123"),
-        "username": os.getenv("CLICKSEND_USERNAME", ""),
-        "api_key": os.getenv("CLICKSEND_API_KEY", ""),
-        "default_domain": os.getenv("DEFAULT_DOMAIN", ""),
-        "default_sender_id": os.getenv("DEFAULT_SENDER_ID", "")
+        "admin_username": (os.getenv("ADMIN_USERNAME") or "admin").strip(),
+        "admin_password": (os.getenv("ADMIN_PASSWORD") or "admin123").strip(),
+        "username": (os.getenv("CLICKSEND_USERNAME") or "").strip(),
+        "api_key": (os.getenv("CLICKSEND_API_KEY") or "").strip(),
+        "default_domain": (os.getenv("DEFAULT_DOMAIN") or "").strip(),
+        "default_sender_id": (os.getenv("DEFAULT_SENDER_ID") or "").strip()
     }
     if SETTINGS_FILE.exists():
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                settings.update(saved)
+                for k, v in saved.items():
+                    # Dosyadaki değer boş değilse kullan
+                    if v is not None and str(v).strip() != "":
+                        settings[k] = str(v).strip()
         except Exception:
             pass
     return settings

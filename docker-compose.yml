@@ -1,27 +1,26 @@
 version: "3.8"
 
 services:
-  portal-console:
+  clicksend-panel:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: portal-console
+    container_name: clicksend-panel
     restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      - portal_data:/app/data
+      - clicksend_data:/app/data
     environment:
       - DATA_DIR=/app/data
-      # Panel Giriş Bilgileri (Varsayılan: admin / admin123)
-      - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=admin123
-      # Opsiyonel: Sağlayıcı API Bilgileri (Arayüzden de girilebilir)
-      - CLICKSEND_USERNAME=
-      - CLICKSEND_API_KEY=
-      - DEFAULT_DOMAIN=
-      - DEFAULT_SENDER_ID=
+      # Dokploy Environment sekmesindeki değerleri otomatik çeker:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - CLICKSEND_USERNAME=${CLICKSEND_USERNAME:-}
+      - CLICKSEND_API_KEY=${CLICKSEND_API_KEY:-}
+      - DEFAULT_DOMAIN=${DEFAULT_DOMAIN:-}
+      - DEFAULT_SENDER_ID=${DEFAULT_SENDER_ID:-}
 
 volumes:
-  portal_data:
-    name: portal_data
+  clicksend_data:
+    name: clicksend_data
